@@ -1,0 +1,318 @@
+package com.example.mercao
+
+import androidx.appcompat.app.AppCompatActivity
+import android.os.Bundle
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.util.Size
+import android.graphics.Matrix
+import android.util.Log
+import android.view.Surface
+import android.view.TextureView
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.ImageView
+import android.widget.TextView
+import android.widget.Toast
+import androidx.camera.core.*
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import com.google.firebase.ml.vision.FirebaseVision
+import com.google.firebase.ml.vision.common.FirebaseVisionImage
+import com.google.firebase.ml.vision.common.FirebaseVisionImageMetadata
+import java.nio.ByteBuffer
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+
+// This is an arbitrary number we are using to keep track of the permission
+// request. Where an app has multiple context for requesting permission,
+// this can help differentiate the different contexts.
+private const val REQUEST_CODE_PERMISSIONS = 10
+
+// This is an array of all the permission specified in the manifest.
+private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA)
+
+var valor =""
+
+class PantallaCamara : AppCompatActivity() {
+
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_pantalla_camara)
+
+        viewFinder = findViewById(R.id.view_finder)
+
+        // Request camera permissions
+        if (allPermissionsGranted()) {
+            viewFinder.post { startCamera() }
+        } else {
+            ActivityCompat.requestPermissions(
+                    this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
+        }
+
+        // Every time the provided texture view changes, recompute layout
+        viewFinder.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateTransform()
+
+
+        }
+
+        findViewById<Button>(R.id.tomarFoto).setOnClickListener {
+            findViewById<Button>(R.id.tomarFoto).visibility= View.INVISIBLE
+            findViewById<ImageView>(R.id.recuadro).visibility= View.VISIBLE
+            findViewById<Button>(R.id.fondo).visibility= View.VISIBLE
+            findViewById<Button>(R.id.escape).visibility= View.VISIBLE
+            findViewById<ImageView>(R.id.fondoOpa).visibility= View.VISIBLE
+            findViewById<TextView>(R.id.nombre).visibility= View.VISIBLE
+            findViewById<TextView>(R.id.precio).visibility= View.VISIBLE
+            if(valor=="Cup"){
+                findViewById<ImageView>(R.id.imagenRecuadro).visibility= View.VISIBLE
+                findViewById<Button>(R.id.agregar).visibility= View.VISIBLE
+                findViewById<TextView>(R.id.nombre).text= "Taza"
+                findViewById<TextView>(R.id.precio).text= "2.000$"
+                findViewById<ImageView>(R.id.imagenRecuadro).setImageResource(R.drawable.taza)
+                findViewById<Button>(R.id.agregar).setOnClickListener {
+                    val intent = Intent(this, Carrito::class.java)
+                    intent.putExtra("Atraer", "Cup")
+                    startActivity(intent)
+                    finish()
+                }
+            } else  if(valor=="Spoon"){
+                findViewById<ImageView>(R.id.imagenRecuadro).visibility= View.VISIBLE
+                findViewById<Button>(R.id.agregar).visibility= View.VISIBLE
+                findViewById<TextView>(R.id.nombre).text= "Chuchara"
+                findViewById<TextView>(R.id.precio).text= "2000$"
+                findViewById<ImageView>(R.id.imagenRecuadro).setImageResource(R.drawable.foto_cuchara)
+                findViewById<Button>(R.id.agregar).setOnClickListener {
+                    val intent = Intent(this, Carrito::class.java)
+                    intent.putExtra("Atraer", "Spoon")
+                    startActivity(intent)
+                    finish()
+                }
+            }
+
+
+            else{
+                findViewById<TextView>(R.id.nombre).text= "No se encontraron productos"
+
+            }
+
+        }
+        findViewById<Button>(R.id.escape).setOnClickListener {
+            findViewById<ImageView>(R.id.recuadro).visibility= View.INVISIBLE
+            findViewById<ImageView>(R.id.imagenRecuadro).visibility= View.INVISIBLE
+            findViewById<Button>(R.id.agregar).visibility= View.INVISIBLE
+            findViewById<Button>(R.id.fondo).visibility= View.INVISIBLE
+            findViewById<ImageView>(R.id.fondoOpa).visibility= View.INVISIBLE
+            findViewById<Button>(R.id.escape).visibility= View.INVISIBLE
+            findViewById<Button>(R.id.tomarFoto).visibility= View.VISIBLE
+            findViewById<TextView>(R.id.nombre).visibility= View.INVISIBLE
+            findViewById<TextView>(R.id.precio).visibility= View.INVISIBLE
+        }
+        findViewById<Button>(R.id.fondo).setOnClickListener {
+            findViewById<ImageView>(R.id.recuadro).visibility= View.INVISIBLE
+            findViewById<ImageView>(R.id.imagenRecuadro).visibility= View.INVISIBLE
+            findViewById<Button>(R.id.agregar).visibility= View.INVISIBLE
+            findViewById<Button>(R.id.fondo).visibility= View.INVISIBLE
+            findViewById<ImageView>(R.id.fondoOpa).visibility= View.INVISIBLE
+            findViewById<Button>(R.id.escape).visibility= View.INVISIBLE
+            findViewById<Button>(R.id.tomarFoto).visibility= View.VISIBLE
+            findViewById<TextView>(R.id.nombre).visibility= View.INVISIBLE
+            findViewById<TextView>(R.id.precio).visibility= View.INVISIBLE
+        }
+
+        findViewById<ImageView>(R.id.recuadro).visibility= View.INVISIBLE
+        findViewById<ImageView>(R.id.fondoOpa).visibility= View.INVISIBLE
+        findViewById<ImageView>(R.id.imagenRecuadro).visibility= View.INVISIBLE
+        findViewById<Button>(R.id.agregar).visibility= View.INVISIBLE
+        findViewById<Button>(R.id.fondo).visibility= View.INVISIBLE
+        findViewById<Button>(R.id.escape).visibility= View.INVISIBLE
+        findViewById<TextView>(R.id.nombre).visibility= View.INVISIBLE
+        findViewById<TextView>(R.id.precio).visibility= View.INVISIBLE
+
+
+
+    }
+
+    private val executor = Executors.newSingleThreadExecutor()
+    private lateinit var viewFinder: TextureView
+
+    private fun startCamera() {
+        // TODO: Implement CameraX operations
+        val previewConfig = PreviewConfig.Builder().apply {
+            setTargetResolution(Size(1080, 2340))
+        }.build()
+
+
+        // Build the viewfinder use case
+        val preview = Preview(previewConfig)
+
+        // Every time the viewfinder is updated, recompute layout
+        preview.setOnPreviewOutputUpdateListener {
+
+            // To update the SurfaceTexture, we have to remove it and re-add it
+            val parent = viewFinder.parent as ViewGroup
+            parent.removeView(viewFinder)
+            parent.addView(viewFinder, 0)
+
+            viewFinder.surfaceTexture = it.surfaceTexture
+            updateTransform()
+        }
+
+
+        // Bind use cases to lifecycle
+        // If Android Studio complains about "this" being not a LifecycleOwner
+        // try rebuilding the project or updating the appcompat dependency to
+        // version 1.1.0 or higher.
+        val analyzerConfig = ImageAnalysisConfig.Builder().apply {
+            // In our analysis, we care more about the latest image than
+            // analyzing *every* image
+            setImageReaderMode(
+                    ImageAnalysis.ImageReaderMode.ACQUIRE_LATEST_IMAGE)
+        }.build()
+
+        // Build the image analysis use case and instantiate our analyzer
+        val analyzerUseCase = ImageAnalysis(analyzerConfig).apply {
+            setAnalyzer(executor, LuminosityAnalyzer())
+        }
+        // Add this before CameraX.bindToLifecycle
+
+        // Setup image analysis pipeline that computes average pixel luminance
+
+
+
+
+        // Bind use cases to lifecycle
+        // If Android Studio complains about "this" being not a LifecycleOwner
+        // try rebuilding the project or updating the appcompat dependency to
+        // version 1.1.0 or higher.
+
+        CameraX.bindToLifecycle(this, preview, analyzerUseCase)
+    }
+
+        // Bind use cases to lifecycle
+        // If Android Studio complains about "this" being not a LifecycleOwner
+        // try rebuilding the project or updating the appcompat dependency to
+        // version 1.1.0 or higher.
+
+
+
+    private fun updateTransform() {
+        // TODO: Implement camera viewfinder transformations
+        val matrix = Matrix()
+
+        // Compute the center of the view finder
+        val centerX = viewFinder.width / 2f
+        val centerY = viewFinder.height / 2f
+
+        // Correct preview output to account for display rotation
+        val rotationDegrees = when(viewFinder.display.rotation) {
+            Surface.ROTATION_0 -> 0
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> return
+        }
+        matrix.postRotate(-rotationDegrees.toFloat(), centerX, centerY)
+
+        // Finally, apply transformations to our TextureView
+        viewFinder.setTransform(matrix)
+    }
+
+    /**
+     * Process result from permission request dialog box, has the request
+     * been granted? If yes, start Camera. Otherwise display a toast
+     */
+    override fun onRequestPermissionsResult(
+            requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        if (requestCode == REQUEST_CODE_PERMISSIONS) {
+            if (allPermissionsGranted()) {
+                viewFinder.post { startCamera() }
+            } else {
+                Toast.makeText(this,
+                        "Permissions not granted by the user.",
+                        Toast.LENGTH_SHORT).show()
+                finish()
+            }
+        }
+    }
+
+    /**
+     * Check if all permission specified in the manifest have been granted
+     */
+    private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
+        ContextCompat.checkSelfPermission(
+                baseContext, it) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private class LuminosityAnalyzer : ImageAnalysis.Analyzer {
+        private var lastAnalyzedTimestamp = 0L
+
+        /**
+         * Helper extension function used to extract a byte array from an
+         * image plane buffer
+         */
+        private fun ByteBuffer.toByteArray(): ByteArray {
+            rewind()    // Rewind the buffer to zero
+            val data = ByteArray(remaining())
+            get(data)   // Copy the buffer into a byte array
+            return data // Return the byte array
+        }
+        private fun degreesToFirebaseRotation(degrees: Int): Int = when (degrees) {
+            0 -> FirebaseVisionImageMetadata.ROTATION_0
+            90 -> FirebaseVisionImageMetadata.ROTATION_90
+            180 -> FirebaseVisionImageMetadata.ROTATION_180
+            270 -> FirebaseVisionImageMetadata.ROTATION_270
+            else -> throw Exception("Rotation must be 0, 90, 180, or 270.")
+        }
+
+        override fun analyze(imageProxy: ImageProxy, degrees: Int) {
+            val currentTimestamp = System.currentTimeMillis()
+            // Calculate the average luma no more often than every second
+            if (currentTimestamp - lastAnalyzedTimestamp >=
+                    TimeUnit.SECONDS.toMillis(1)) {
+                val mediaImage = imageProxy?.image
+                val imageRotation = degreesToFirebaseRotation(degrees)
+                if (mediaImage != null) {
+                    val image = FirebaseVisionImage.fromMediaImage(mediaImage, imageRotation)
+                    // Pass image to an ML Kit Vision API
+                    val labeler = FirebaseVision.getInstance().getCloudImageLabeler()
+
+                    labeler.processImage(image)
+                            .addOnSuccessListener { labels ->
+                                // Task completed successfully
+                                // ...
+                                for (label in labels) {
+                                    val text = label.text
+                                    val entityId = label.entityId
+                                    val confidence = label.confidence
+                                    Log.d("Prueba", text)
+
+                                    if (text == "Cup") {
+                                        valor = text
+                                    }else if (text == "Spoon") {
+                                        valor = text
+                                    }
+
+                                }
+
+                            }
+                            .addOnFailureListener { e ->
+                                // Task failed with an exception
+                                // ...
+                            }
+                    lastAnalyzedTimestamp = currentTimestamp
+                }
+            }
+        }
+    }
+
+
+
+
+
+
+}
